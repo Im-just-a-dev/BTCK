@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create / Edit Test</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<style>
+  .fixed-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-top: 1px solid #dee2e6;
+    z-index: 1000;
+  }
+  .card-body { display: flex; flex-direction: column; gap: 0.5rem; }
+</style>
+</head>
+<body>
+<div class="container mt-4 mb-5 pb-5">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 id="pageTitle">Create New Test</h2>
+    <button id="signOutBtn" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i></button>
+  </div>
+
+  <div id="messageContainer"></div>
+
+  <div class="mb-3">
+    <input type="text" id="testTitleInput" class="form-control form-control-lg" placeholder="Enter Test Title" aria-label="Test Title">
+  </div>
+
+  <div id="questionsContainer" class="d-flex flex-column gap-3"></div>
+</div>
+
+<div class="fixed-bottom-bar d-flex justify-content-end">
+  <button id="addQuestionBtn" class="btn btn-secondary me-2"> <i class="fas fa-plus"></i> Add Question</button>
+  <button id="saveTestBtn" class="btn btn-success"> <i class="fas fa-save"></i> Save Test</button>
+</div>
+
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+  <div id="toastContainer"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyD6WW4LtTG0EVbt22piJM3GhHkqIqzgIQ0",
+  authDomain: "btck-1bb64.firebaseapp.com",
+  projectId: "btck-1bb64",
+  storageBucket: "btck-1bb64.appspot.com",
+  messagingSenderId: "11216845646",
+  appId: "1:11216845646:web:e5a0c637f871ba80293c1f",
+  measurementId: "G-JP71R35J90"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// DOM elements
+const signOutBtn = document.getElementById('signOutBtn');
+const addQuestionBtn = document.getElementById('addQuestionBtn');
+const saveTestBtn = document.getElementById('saveTestBtn');
+const questionsContainer = document.getElementById('questionsContainer');
+const pageTitle = document.getElementById('pageTitle');
+const testTitleInput = document.getElementById('testTitleInput');
+const toastContainer = document.getElementById('toastContainer');
+
+let questions = [];
+let editingTestId = null;
+
+// Toast helper
+function showToast(message, type='bg-danger'){
+  const toastEl = document.createElement('div');
+  toastEl.className = `toast align-items-center text-white ${type} border-0`;
+  toastEl.setAttribute('role','alert'); toastEl.setAttribute('aria-live','assertive'); toastEl.setAttribute('aria-atomic','true');
+  toastEl.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>`;
+  toastContainer.appendChild(toastEl);
+  const toast = new bootstrap.Toast(toastEl,{delay:3000}); toast.show();
+  toastEl.addEventListener('hidden.bs.toast',()=>toastEl.remove());
+}
+
+// Check URL for editing
+const urlParams = new URLSearchParams(window.location.search);
+const testIdFromUrl = urlParams.get('edit');
+if(testIdFromUrl){ editingTestId = testIdFromUrl; pageTitle.textContent="Edit Test"; }
+
+// Sign out
+signOutBtn.onclick = async()=>{ await signOut(auth); window.location.href='signUp.html'; };
+
+// Add new question
+addQuestionBtn.onclick = ()=>{
+  const newQuestion = { questionText:'', questionType:'single', choices:[], mandatory:false };
+  questions.push(newQuestion);
+  renderQuestions();
+};
+
+// Render questions
+function renderQuestions(){
+  questionsContainer.innerHTML='';
+  questions.forEach((q,index)=>{
+    const cardContainer = document.createElement('div');
+    cardContainer.className = 'col-12';
+
+    const card = document.createElement('div');
+    card.className = 'card shadow-sm h-100';
+    card.innerHTML = `
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="card-title mb-0">Question ${index + 1}</h5>
+          <button class="btn btn-sm btn-danger remove-question-btn" data-index="${index}">Remove</button>
+        </div>
+        <input type="text" class="form-control mb-2 question-text-input" placeholder="Question Text" value="${q.questionText || ''}">
+        <select class="form-select mb-2 question-type-select">
+          <option value="single" ${q.questionType==='single'?'selected':''}>Single Choice</option>
+          <option value="multiple" ${q.questionType==='multiple'?'selected':''}>Multiple Choice</option>
+          <option value="truefalse" ${q.questionType==='truefalse'?'selected':''}>True/False</option>
+          <option value="short" ${q.questionType==='short'?'selected':''}>Short Answer</option>
+        </select>
+        <div class="form-check mb-2">
+          <input class="form-check-input mandatory-checkbox" type="checkbox" id="mandatory-${index}" ${q.mandatory?'checked':''}>
+          <label class="form-check-label" for="mandatory-${index}">Mandatory Question</label>
+        </div>
+        <div class="choices-container mt-2"></div>
+      </div>
+    `;
+
+    cardContainer.appendChild(card);
+    questionsContainer.appendChild(cardContainer);
+
+    // Elements
+    const questionTextInput = card.querySelector('.question-text-input');
+    const questionTypeSelect = card.querySelector('.question-type-select');
+    const mandatoryCheckbox = card.querySelector('.mandatory-checkbox');
+    const removeQuestionBtn = card.querySelector('.remove-question-btn');
+    const choicesContainer = card.querySelector('.choices-container');
+
+    // Events
+    questionTextInput.oninput = e=>{ q.questionText = e.target.value; };
+    questionTypeSelect.onchange = e=>{
+      q.questionType = e.target.value;
+      if(q.questionType==='truefalse') q.choices = [{text:'True',correct:false},{text:'False',correct:false}];
+      renderQuestions();
+    };
+    mandatoryCheckbox.onchange = e=>{ q.mandatory = e.target.checked; };
+    removeQuestionBtn.onclick = ()=>{ questions.splice(index,1); renderQuestions(); };
+
+    if(q.questionType==='single' || q.questionType==='multiple'){
+      q.choices.forEach((c,ci)=>{
+        const choiceDiv = document.createElement('div');
+        choiceDiv.className='input-group mb-2';
+        choiceDiv.innerHTML=`
+          <div class="input-group-text">
+            <input class="form-check-input correct-checkbox" type="checkbox" data-index="${ci}" ${c.correct?'checked':''}>
+          </div>
+          <input type="text" class="form-control choice-text-input" placeholder="Choice Text" value="${c.text||''}" data-index="${ci}">
+          <button class="btn btn-outline-danger remove-choice-btn" type="button" data-index="${ci}">X</button>
+        `;
+        choicesContainer.appendChild(choiceDiv);
+
+        choiceDiv.querySelector('.choice-text-input').oninput = e=>{ c.text=e.target.value; };
+        choiceDiv.querySelector('.correct-checkbox').onchange = e=>{
+          if(q.questionType==='single'){
+            q.choices.forEach((choice,idx)=>choice.correct=(idx===ci));
+            renderQuestions();
+          }else{
+            c.correct = e.target.checked;
+          }
+        };
+        choiceDiv.querySelector('.remove-choice-btn').onclick = ()=>{ q.choices.splice(ci,1); renderQuestions(); };
+      });
+
+      const addChoiceBtn = document.createElement('button');
+      addChoiceBtn.className='btn btn-sm btn-outline-primary mt-1';
+      addChoiceBtn.textContent='Add Choice';
+      addChoiceBtn.onclick = ()=>{ q.choices.push({text:'',correct:false}); renderQuestions(); };
+      choicesContainer.appendChild(addChoiceBtn);
+    }
+  });
+}
+
+// Save test
+saveTestBtn.onclick=async()=>{
+  const user = auth.currentUser;
+  if(!user){ showToast('You must log in first!','bg-danger'); return; }
+  if(!testTitleInput.value.trim()){ showToast('Enter a test title','bg-danger'); return; }
+
+  // Validate mandatory questions
+  for(let i=0;i<questions.length;i++){
+    const q=questions[i];
+    if(q.mandatory && !q.questionText.trim()){ showToast(`Question ${i+1} is mandatory but empty.`,'bg-danger'); return; }
+    if((q.questionType==='single'||q.questionType==='multiple') && q.mandatory){
+      const hasChoice = q.choices.some(c=>c.text.trim()!=='');
+      if(!hasChoice){ showToast(`Question ${i+1} is mandatory but has no choices.`,'bg-danger'); return; }
+    }
+  }
+
+  const testData = {
+    title: testTitleInput.value.trim(),
+    ownerId: user.uid,
+    ownerEmail: user.email,
+    questions,
+    createdAt: serverTimestamp()
+  };
+
+  try{
+    if(editingTestId){
+      await updateDoc(doc(db,'tests',editingTestId),testData);
+      showToast('Test updated successfully!','bg-success');
+    }else{
+      await addDoc(collection(db,'tests'),testData);
+      showToast('Test saved successfully!','bg-success');
+    }
+    setTimeout(()=>{ window.location.href='dashboard.html'; },1200);
+  }catch(e){
+    console.error(e); showToast('Failed to save test. Try again.','bg-danger');
+  }
+};
+
+// Load test for editing
+async function loadTestForEditing(){
+  if(!editingTestId) return;
+  const docSnap = await getDoc(doc(db,'tests',editingTestId));
+  if(!docSnap.exists()){ showToast('Test not found','bg-danger'); window.location.href='dashboard.html'; return; }
+  const data = docSnap.data();
+  testTitleInput.value = data.title;
+  questions = data.questions||[];
+  renderQuestions();
+}
+
+// Auth guard
+onAuthStateChanged(auth,(user)=>{
+  if(!user) window.location.href='signUp.html';
+  else loadTestForEditing();
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

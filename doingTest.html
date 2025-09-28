@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Take Test</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+
+<div class="container mt-5">
+    <h2 id="testTitle" class="mb-4"></h2>
+    <div id="questionsContainer"></div>
+    <button id="submitTestBtn" class="btn btn-success mt-3">Submit Test</button>
+</div>
+
+<!-- Toast container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+  <div id="toastContainer"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyD6WW4LtTG0EVbt22piJM3GhHkqIqzgIQ0",
+  authDomain: "btck-1bb64.firebaseapp.com",
+  projectId: "btck-1bb64",
+  storageBucket: "btck-1bb64.appspot.com",
+  messagingSenderId: "11216845646",
+  appId: "1:11216845646:web:e5a0c637f871ba80293c1f",
+  measurementId: "G-JP71R35J90"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const testTitleEl = document.getElementById('testTitle');
+const questionsContainer = document.getElementById('questionsContainer');
+const submitBtn = document.getElementById('submitTestBtn');
+const toastContainer = document.getElementById('toastContainer');
+
+let testData = null;
+let userAnswers = [];
+
+// Toast helper
+function showToast(message, type='bg-danger') {
+    const toastId = `toast-${Date.now()}`;
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center text-white ${type} border-0`;
+    toastEl.id = toastId;
+    toastEl.setAttribute('role','alert');
+    toastEl.setAttribute('aria-live','assertive');
+    toastEl.setAttribute('aria-atomic','true');
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>`;
+    toastContainer.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    toast.show();
+    toastEl.addEventListener('hidden.bs.toast',()=>{ toastEl.remove(); });
+}
+
+// Get testId from URL
+const urlParams = new URLSearchParams(window.location.search);
+const testId = urlParams.get('testId');
+if(!testId) { showToast('No test selected','bg-danger'); setTimeout(()=>window.location.href='dashboard.html',1000); }
+
+// Render questions
+function renderQuestions() {
+    questionsContainer.innerHTML='';
+    userAnswers = [];
+    testData.questions.forEach((q,index)=>{
+        const card = document.createElement('div'); card.className='card mb-3';
+        const cardBody = document.createElement('div'); cardBody.className='card-body';
+        const questionTitle = document.createElement('h5'); questionTitle.textContent=`Q${index+1}: ${q.questionText}`; cardBody.appendChild(questionTitle);
+
+        userAnswers.push(q.questionType==='multiple' ? [] : null);
+
+        if(q.questionType==='single' || q.questionType==='multiple'){
+            q.choices.forEach((c,ci)=>{
+                const div = document.createElement('div'); div.className='form-check';
+                const input = document.createElement('input');
+                input.className='form-check-input'; input.type = (q.questionType==='single') ? 'radio' : 'checkbox';
+                input.name = `q-${index}`; input.id = `q-${index}-c-${ci}`;
+                input.onchange = (e)=>{
+                    if(q.questionType==='single') userAnswers[index]=ci;
+                    else{
+                        if(e.target.checked) userAnswers[index].push(ci);
+                        else userAnswers[index] = userAnswers[index].filter(x=>x!==ci);
+                    }
+                };
+                const label = document.createElement('label'); label.className='form-check-label'; label.htmlFor=input.id; label.textContent=c.text;
+                div.appendChild(input); div.appendChild(label);
+                cardBody.appendChild(div);
+            });
+        } else if(q.questionType==='truefalse'){
+            q.choices.forEach((c,ci)=>{
+                const div = document.createElement('div'); div.className='form-check';
+                const input = document.createElement('input'); input.className='form-check-input'; input.type='radio';
+                input.name=`q-${index}`; input.id=`q-${index}-tf-${ci}`;
+                input.onchange=()=>{ userAnswers[index]=c.text; };
+                const label = document.createElement('label'); label.className='form-check-label'; label.htmlFor=input.id; label.textContent=c.text;
+                div.appendChild(input); div.appendChild(label);
+                cardBody.appendChild(div);
+            });
+        } else if(q.questionType==='short'){
+            const input = document.createElement('input'); input.type='text'; input.className='form-control';
+            input.oninput=(e)=>{ userAnswers[index]=e.target.value; };
+            cardBody.appendChild(input);
+        }
+
+        card.appendChild(cardBody); questionsContainer.appendChild(card);
+    });
+}
+
+// Submit test
+submitBtn.onclick=()=>{
+    // Validate mandatory
+    for(let i=0;i<testData.questions.length;i++){
+        const q=testData.questions[i];
+        if(q.mandatory){
+            if(q.questionType==='short' && (!userAnswers[i] || !userAnswers[i].trim())){
+                showToast(`Q${i+1} is mandatory`, 'bg-danger'); return;
+            }
+            if((q.questionType==='single'||q.questionType==='truefalse') && userAnswers[i]===null){
+                showToast(`Q${i+1} is mandatory`, 'bg-danger'); return;
+            }
+            if(q.questionType==='multiple' && (!userAnswers[i] || userAnswers[i].length===0)){
+                showToast(`Q${i+1} is mandatory`, 'bg-danger'); return;
+            }
+        }
+    }
+
+    // Compute results
+    const resultsDiv=document.createElement('div');
+    resultsDiv.className='mt-4';
+    let correctCount=0;
+    testData.questions.forEach((q,i)=>{
+        let correct=false;
+        if(q.questionType==='single'){
+            correct = q.choices[userAnswers[i]]?.correct || false;
+        } else if(q.questionType==='multiple'){
+            correct = q.choices.every((c,ci)=>c.correct===userAnswers[i].includes(ci));
+        } else if(q.questionType==='truefalse'){
+            correct = q.choices.find(c=>c.correct)?.text===userAnswers[i];
+        } else if(q.questionType==='short'){
+            correct = q.correctAnswer && userAnswers[i] && q.correctAnswer.trim().toLowerCase()===userAnswers[i].trim().toLowerCase();
+        }
+        if(correct) correctCount++;
+        const p=document.createElement('p');
+        p.innerHTML = `Q${i+1}: ${correct 
+            ? '<i class="fas fa-check-circle" style="color:green"></i>' 
+            : '<i class="fas fa-times-circle" style="color:red"></i>'}`;
+        resultsDiv.appendChild(p);
+    });
+
+    questionsContainer.innerHTML='';
+    const score=document.createElement('h4'); score.textContent=`Score: ${correctCount}/${testData.questions.length}`;
+    questionsContainer.appendChild(score);
+    questionsContainer.appendChild(resultsDiv);
+
+    const dashboardBtn=document.createElement('button'); dashboardBtn.textContent='Go to Dashboard';
+    dashboardBtn.className='btn btn-primary mt-3';
+    dashboardBtn.onclick=()=>{ window.location.href='dashboard.html'; };
+    questionsContainer.appendChild(dashboardBtn);
+}
+
+// Load test from Firestore
+async function loadTest(){
+    const docSnap = await getDoc(doc(db,'tests',testId));
+    if(!docSnap.exists()){ showToast('Test not found','bg-danger'); setTimeout(()=>window.location.href='dashboard.html',1000); return; }
+    testData=docSnap.data();
+    testTitleEl.textContent=testData.title;
+    renderQuestions();
+}
+
+// Auth guard
+onAuthStateChanged(auth,(user)=>{
+    if(!user) window.location.href='signUp.html';
+    else loadTest();
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
