@@ -16,6 +16,19 @@
     border-top: 1px solid #dee2e6;
     z-index: 1000;
   }
+  body {
+    background: url('background.jpg') no-repeat center center fixed;
+    background-size: cover;
+    background-attachment: fixed;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.3);
+    z-index: -1;
+  }
   .card-body { display: flex; flex-direction: column; gap: 0.5rem; }
 </style>
 </head>
@@ -32,16 +45,34 @@
     <input type="text" id="testTitleInput" class="form-control form-control-lg" placeholder="Enter Test Title" aria-label="Test Title">
   </div>
 
+  <div class="mb-3">
+    <label for="testTypeSelect" class="form-label">Select Test Type</label>
+    <select id="testTypeSelect" class="form-select">
+      <option value="public">Public</option>
+      <option value="private">Private</option>
+      <option value="link">Link-only</option>
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label for="categorySelect" class="form-label">Select Category</label>
+    <select id="categorySelect" class="form-select">
+      <option value="">-- Choose Category --</option>
+      <option value="Mathematics">Mathematics</option>
+      <option value="Science">Science</option>
+      <option value="Computer Science">Computer Science</option>
+      <option value="Geography">Geography</option>
+      <option value="History">History</option>
+      <option value="Language">Language</option>
+    </select>
+  </div>
+
   <div id="questionsContainer" class="d-flex flex-column gap-3"></div>
 </div>
 
 <div class="fixed-bottom-bar d-flex justify-content-end">
-  <button id="addQuestionBtn" class="btn btn-secondary me-2"> <i class="fas fa-plus"></i> Add Question</button>
-  <button id="saveTestBtn" class="btn btn-success"> <i class="fas fa-save"></i> Save Test</button>
-</div>
-
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-  <div id="toastContainer"></div>
+  <button id="addQuestionBtn" class="btn btn-secondary me-2"><i class="fas fa-plus"></i> Add Question</button>
+  <button id="saveTestBtn" class="btn btn-success"><i class="fas fa-save"></i> Save Test</button>
 </div>
 
 <script type="module">
@@ -64,57 +95,54 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// DOM elements
 const signOutBtn = document.getElementById('signOutBtn');
 const addQuestionBtn = document.getElementById('addQuestionBtn');
 const saveTestBtn = document.getElementById('saveTestBtn');
 const questionsContainer = document.getElementById('questionsContainer');
 const pageTitle = document.getElementById('pageTitle');
 const testTitleInput = document.getElementById('testTitleInput');
-const toastContainer = document.getElementById('toastContainer');
+const categorySelect = document.getElementById('categorySelect');
+const testTypeSelect = document.getElementById('testTypeSelect');
+const messageContainer = document.getElementById('messageContainer');
 
 let questions = [];
 let editingTestId = null;
 
-// Toast helper
-function showToast(message, type='bg-danger'){
-  const toastEl = document.createElement('div');
-  toastEl.className = `toast align-items-center text-white ${type} border-0`;
-  toastEl.setAttribute('role','alert'); toastEl.setAttribute('aria-live','assertive'); toastEl.setAttribute('aria-atomic','true');
-  toastEl.innerHTML = `
-    <div class="d-flex">
-      <div class="toast-body">${message}</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+// Bootstrap alert utility
+function showAlert(message, type = 'success') {
+  messageContainer.innerHTML = `
+    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>`;
-  toastContainer.appendChild(toastEl);
-  const toast = new bootstrap.Toast(toastEl,{delay:3000}); toast.show();
-  toastEl.addEventListener('hidden.bs.toast',()=>toastEl.remove());
 }
 
-// Check URL for editing
+// Check URL for edit mode
 const urlParams = new URLSearchParams(window.location.search);
 const testIdFromUrl = urlParams.get('edit');
-if(testIdFromUrl){ editingTestId = testIdFromUrl; pageTitle.textContent="Edit Test"; }
+if (testIdFromUrl) {
+  editingTestId = testIdFromUrl;
+  pageTitle.textContent = "Edit Test";
+}
 
 // Sign out
-signOutBtn.onclick = async()=>{ await signOut(auth); window.location.href='signUp.html'; };
+signOutBtn.onclick = async () => {
+  await signOut(auth);
+  window.location.href = 'signUp.html';
+};
 
-// Add new question
-addQuestionBtn.onclick = ()=>{
-  const newQuestion = { questionText:'', questionType:'single', choices:[], mandatory:false };
-  questions.push(newQuestion);
+// Add a new question
+addQuestionBtn.onclick = () => {
+  questions.push({ questionText: '', questionType: 'single', choices: [], mandatory: false });
   renderQuestions();
 };
 
-// Render questions
-function renderQuestions(){
-  questionsContainer.innerHTML='';
-  questions.forEach((q,index)=>{
-    const cardContainer = document.createElement('div');
-    cardContainer.className = 'col-12';
-
+// Render questions and choices
+function renderQuestions() {
+  questionsContainer.innerHTML = '';
+  questions.forEach((q, index) => {
     const card = document.createElement('div');
-    card.className = 'card shadow-sm h-100';
+    card.className = 'card shadow-sm';
     card.innerHTML = `
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -123,128 +151,158 @@ function renderQuestions(){
         </div>
         <input type="text" class="form-control mb-2 question-text-input" placeholder="Question Text" value="${q.questionText || ''}">
         <select class="form-select mb-2 question-type-select">
-          <option value="single" ${q.questionType==='single'?'selected':''}>Single Choice</option>
-          <option value="multiple" ${q.questionType==='multiple'?'selected':''}>Multiple Choice</option>
-          <option value="truefalse" ${q.questionType==='truefalse'?'selected':''}>True/False</option>
-          <option value="short" ${q.questionType==='short'?'selected':''}>Short Answer</option>
+          <option value="single" ${q.questionType === 'single' ? 'selected' : ''}>Single Choice</option>
+          <option value="multiple" ${q.questionType === 'multiple' ? 'selected' : ''}>Multiple Choice</option>
+          <option value="truefalse" ${q.questionType === 'truefalse' ? 'selected' : ''}>True/False</option>
+          <option value="short" ${q.questionType === 'short' ? 'selected' : ''}>Short Answer</option>
         </select>
         <div class="form-check mb-2">
-          <input class="form-check-input mandatory-checkbox" type="checkbox" id="mandatory-${index}" ${q.mandatory?'checked':''}>
+          <input class="form-check-input mandatory-checkbox" type="checkbox" id="mandatory-${index}" ${q.mandatory ? 'checked' : ''}>
           <label class="form-check-label" for="mandatory-${index}">Mandatory Question</label>
         </div>
         <div class="choices-container mt-2"></div>
       </div>
     `;
+    questionsContainer.appendChild(card);
 
-    cardContainer.appendChild(card);
-    questionsContainer.appendChild(cardContainer);
-
-    // Elements
     const questionTextInput = card.querySelector('.question-text-input');
     const questionTypeSelect = card.querySelector('.question-type-select');
     const mandatoryCheckbox = card.querySelector('.mandatory-checkbox');
     const removeQuestionBtn = card.querySelector('.remove-question-btn');
     const choicesContainer = card.querySelector('.choices-container');
 
-    // Events
-    questionTextInput.oninput = e=>{ q.questionText = e.target.value; };
-    questionTypeSelect.onchange = e=>{
+    questionTextInput.oninput = e => q.questionText = e.target.value;
+    questionTypeSelect.onchange = e => {
       q.questionType = e.target.value;
-      if(q.questionType==='truefalse') q.choices = [{text:'True',correct:false},{text:'False',correct:false}];
+      if ((q.questionType === 'truefalse') && (!q.choices || q.choices.length === 0)) {
+        q.choices = [{ text: 'True', correct: false }, { text: 'False', correct: false }];
+      }
       renderQuestions();
     };
-    mandatoryCheckbox.onchange = e=>{ q.mandatory = e.target.checked; };
-    removeQuestionBtn.onclick = ()=>{ questions.splice(index,1); renderQuestions(); };
+    mandatoryCheckbox.onchange = e => q.mandatory = e.target.checked;
+    removeQuestionBtn.onclick = () => { questions.splice(index, 1); renderQuestions(); };
 
-    if(q.questionType==='single' || q.questionType==='multiple'){
-      q.choices.forEach((c,ci)=>{
+    // Choices for single/multiple choice
+    if (q.questionType === 'single' || q.questionType === 'multiple') {
+      if (!q.choices) q.choices = [];
+      q.choices.forEach((c, ci) => {
         const choiceDiv = document.createElement('div');
-        choiceDiv.className='input-group mb-2';
-        choiceDiv.innerHTML=`
+        choiceDiv.className = 'input-group mb-2';
+        choiceDiv.innerHTML = `
           <div class="input-group-text">
-            <input class="form-check-input correct-checkbox" type="checkbox" data-index="${ci}" ${c.correct?'checked':''}>
+            <input class="form-check-input correct-checkbox" type="checkbox" ${c.correct ? 'checked' : ''}>
           </div>
-          <input type="text" class="form-control choice-text-input" placeholder="Choice Text" value="${c.text||''}" data-index="${ci}">
-          <button class="btn btn-outline-danger remove-choice-btn" type="button" data-index="${ci}">X</button>
+          <input type="text" class="form-control choice-text-input" placeholder="Choice Text" value="${c.text || ''}">
+          <button class="btn btn-outline-danger remove-choice-btn" type="button">X</button>
         `;
         choicesContainer.appendChild(choiceDiv);
 
-        choiceDiv.querySelector('.choice-text-input').oninput = e=>{ c.text=e.target.value; };
-        choiceDiv.querySelector('.correct-checkbox').onchange = e=>{
-          if(q.questionType==='single'){
-            q.choices.forEach((choice,idx)=>choice.correct=(idx===ci));
+        choiceDiv.querySelector('.choice-text-input').oninput = e => c.text = e.target.value;
+        choiceDiv.querySelector('.correct-checkbox').onchange = e => {
+          if (q.questionType === 'single') {
+            q.choices.forEach(choice => choice.correct = false);
+            c.correct = e.target.checked;
             renderQuestions();
-          }else{
+          } else {
             c.correct = e.target.checked;
           }
         };
-        choiceDiv.querySelector('.remove-choice-btn').onclick = ()=>{ q.choices.splice(ci,1); renderQuestions(); };
+        choiceDiv.querySelector('.remove-choice-btn').onclick = () => { q.choices.splice(ci, 1); renderQuestions(); };
       });
 
       const addChoiceBtn = document.createElement('button');
-      addChoiceBtn.className='btn btn-sm btn-outline-primary mt-1';
-      addChoiceBtn.textContent='Add Choice';
-      addChoiceBtn.onclick = ()=>{ q.choices.push({text:'',correct:false}); renderQuestions(); };
+      addChoiceBtn.className = 'btn btn-sm btn-outline-primary mt-1';
+      addChoiceBtn.textContent = 'Add Choice';
+      addChoiceBtn.onclick = () => { q.choices.push({ text: '', correct: false }); renderQuestions(); };
       choicesContainer.appendChild(addChoiceBtn);
+    }
+
+    // True/False choices
+    else if (q.questionType === 'truefalse') {
+      q.choices.forEach((c, ci) => {
+        const choiceDiv = document.createElement('div');
+        choiceDiv.className = 'form-check';
+        choiceDiv.innerHTML = `
+          <input class="form-check-input correct-radio" type="radio" name="tf-${index}" id="tf-${index}-${ci}" ${c.correct ? 'checked' : ''}>
+          <label class="form-check-label" for="tf-${index}-${ci}">${c.text}</label>
+        `;
+        choicesContainer.appendChild(choiceDiv);
+
+        choiceDiv.querySelector('.correct-radio').onchange = e => {
+          q.choices.forEach(choice => choice.correct = false);
+          c.correct = e.target.checked;
+        };
+      });
     }
   });
 }
 
 // Save test
-saveTestBtn.onclick=async()=>{
+saveTestBtn.onclick = async () => {
   const user = auth.currentUser;
-  if(!user){ showToast('You must log in first!','bg-danger'); return; }
-  if(!testTitleInput.value.trim()){ showToast('Enter a test title','bg-danger'); return; }
-
-  // Validate mandatory questions
-  for(let i=0;i<questions.length;i++){
-    const q=questions[i];
-    if(q.mandatory && !q.questionText.trim()){ showToast(`Question ${i+1} is mandatory but empty.`,'bg-danger'); return; }
-    if((q.questionType==='single'||q.questionType==='multiple') && q.mandatory){
-      const hasChoice = q.choices.some(c=>c.text.trim()!=='');
-      if(!hasChoice){ showToast(`Question ${i+1} is mandatory but has no choices.`,'bg-danger'); return; }
-    }
-  }
+  if (!user) return showAlert('You must log in first!', 'danger');
+  if (!testTitleInput.value.trim()) return showAlert('Please enter a test title.', 'danger');
+  if (!categorySelect.value) return showAlert('Please select a category.', 'danger');
 
   const testData = {
     title: testTitleInput.value.trim(),
+    category: categorySelect.value,
+    type: testTypeSelect.value,
     ownerId: user.uid,
     ownerEmail: user.email,
     questions,
     createdAt: serverTimestamp()
   };
 
-  try{
-    if(editingTestId){
-      await updateDoc(doc(db,'tests',editingTestId),testData);
-      showToast('Test updated successfully!','bg-success');
-    }else{
-      await addDoc(collection(db,'tests'),testData);
-      showToast('Test saved successfully!','bg-success');
+  try {
+    if (editingTestId) {
+      await updateDoc(doc(db, 'tests', editingTestId), testData);
+      showAlert(`Test updated successfully under "${categorySelect.value}".`, 'success');
+    } else {
+      const docRef = await addDoc(collection(db, 'tests'), testData);
+      showAlert(`Test created successfully under "${categorySelect.value}".`, 'success');
+
+      if (testTypeSelect.value === 'link') {
+        const testLink = `${window.location.origin}doingTest.html?testId=${docRef.id}`;
+        showAlert(`Test link (shareable): <a href="${testLink}" target="_blank">${testLink}</a>`, 'info');
+      }
     }
-    setTimeout(()=>{ window.location.href='dashboard.html'; },1200);
-  }catch(e){
-    console.error(e); showToast('Failed to save test. Try again.','bg-danger');
+    setTimeout(() => { window.location.href = 'dashboard.html'; }, 1500);
+  } catch (e) {
+    console.error(e);
+    showAlert('Failed to save test. Try again.', 'danger');
   }
 };
 
 // Load test for editing
-async function loadTestForEditing(){
-  if(!editingTestId) return;
-  const docSnap = await getDoc(doc(db,'tests',editingTestId));
-  if(!docSnap.exists()){ showToast('Test not found','bg-danger'); window.location.href='dashboard.html'; return; }
+async function loadTestForEditing() {
+  if (!editingTestId) return;
+  const docSnap = await getDoc(doc(db, 'tests', editingTestId));
+  if (!docSnap.exists()) {
+    showAlert('Test not found', 'danger');
+    return window.location.href = 'dashboard.html';
+  }
   const data = docSnap.data();
-  testTitleInput.value = data.title;
-  questions = data.questions||[];
+
+  // Set all fields from the saved test
+  testTitleInput.value = data.title || '';
+  categorySelect.value = data.category || '';
+  testTypeSelect.value = data.type || 'public'; // fixed: preserve saved type
+  questions = data.questions || [];
   renderQuestions();
 }
 
 // Auth guard
-onAuthStateChanged(auth,(user)=>{
-  if(!user) window.location.href='signUp.html';
-  else loadTestForEditing();
+let loaded = false;
+onAuthStateChanged(auth, (user) => {
+  if (!user) window.location.href = 'signUp.html';
+  else if (!loaded) {
+    loadTestForEditing();
+    loaded = true;
+  }
 });
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
