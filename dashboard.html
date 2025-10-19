@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -9,27 +9,64 @@
 <style>
   #yourTestsGrid::-webkit-scrollbar { display: none; }
   #yourTestsGrid { -ms-overflow-style: none; scrollbar-width: none; }
+  .nav-category { cursor: pointer; }
+  .nav-category.active { font-weight: bold; text-decoration: underline; color: #0d6efd !important; }
+  body {
+    background: url('background.jpg') no-repeat center center fixed;
+    background-size: cover;
+    background-attachment: fixed;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.3);
+    z-index: -1;
+  }
 </style>
 </head>
 <body>
-<div class="container mt-4">
-  <!-- Top Row: User info + search + create button -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <div id="userInfo">
-      <span id="userName" class="fw-bold"></span> | 
-      <button id="signOutBtn" class="btn btn-sm btn-outline-danger"><i class="fas fa-sign-out-alt"></i></button>
-    </div>
-    <div class="d-flex w-50 justify-content-end">
-      <input type="text" id="searchInput" class="form-control me-2" placeholder=" Search tests...">
-      <button id="createTestBtn" class="btn btn-success"> <i class="fas fa-plus-circle"></i></button>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm">
+  <div class="container-fluid">
+    <span class="navbar-brand fw-bold">Test Dashboard</span>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="categoryNav">
+        <li class="nav-item"><a class="nav-link nav-category active" data-category="All">All</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="Mathematics">Mathematics</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="Science">Science</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="Computer Science">Computer Science</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="Geography">Geography</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="History">History</a></li>
+        <li class="nav-item"><a class="nav-link nav-category" data-category="Language">Language</a></li>
+      </ul>
+
+      <form class="d-flex align-items-center" role="search" onsubmit="return false;">
+        <input type="search" id="searchInput" class="form-control me-2" placeholder="Search tests..." style="width: 250px;">
+        <button id="createTestBtn" class="btn btn-success me-3" type="button">
+          <i class="fas fa-plus-circle"></i> Create
+        </button>
+        <div id="userInfo" class="d-flex align-items-center">
+          <span id="userName" class="fw-bold me-2"></span>
+          <button id="signOutBtn" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
+</nav>
 
-  <!-- Your Tests -->
+<div class="container mt-4">
   <h4>Your Tests</h4>
   <div id="yourTestsGrid" class="d-flex flex-row flex-nowrap overflow-auto mb-5"></div>
 
-  <!-- Other Tests -->
   <h4>Other Tests</h4>
   <div id="otherTestsGrid" class="row row-cols-1 row-cols-md-3 g-3"></div>
   <div class="d-flex justify-content-center mt-3">
@@ -37,17 +74,34 @@
   </div>
 </div>
 
-<!-- Toast container -->
 <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
   <div id="toastContainer"></div>
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete <strong id="deleteTestTitle"></strong>? This action cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
+import { getFirestore, collection, getDocs, query, orderBy, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
 
-// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyD6WW4LtTG0EVbt22piJM3GhHkqIqzgIQ0",
   authDomain: "btck-1bb64.firebaseapp.com",
@@ -62,119 +116,239 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// DOM Elements
 const userNameEl = document.getElementById('userName');
-const signOutBtn = document.getElementById('signOutBtn');
+const signOutBtnEl = document.getElementById('signOutBtn');
 const createTestBtn = document.getElementById('createTestBtn');
 const searchInput = document.getElementById('searchInput');
 const yourTestsGrid = document.getElementById('yourTestsGrid');
 const otherTestsGrid = document.getElementById('otherTestsGrid');
-const toastContainer = document.getElementById('toastContainer');
 const loadMoreBtn = document.getElementById('loadMoreBtn');
+const categoryNav = document.getElementById('categoryNav');
+const toastContainer = document.getElementById('toastContainer');
+
+const deleteModalEl = document.getElementById('deleteModal');
+const deleteModal = new bootstrap.Modal(deleteModalEl);
+const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+const deleteTestTitleEl = document.getElementById('deleteTestTitle');
+let testToDeleteId = null;
 
 let allTests = [], currentUser = null;
 let otherTests = [], otherTestsIndex = 0;
+let activeCategory = "All";
 const chunkSize = 3;
 
 // Toast helper
-function showToast(message,type='bg-danger'){
+function showToast(message, type='bg-danger') {
   const toastEl = document.createElement('div');
   toastEl.className = `toast align-items-center text-white ${type} border-0`;
-  toastEl.setAttribute('role','alert'); toastEl.setAttribute('aria-live','assertive'); toastEl.setAttribute('aria-atomic','true');
+  toastEl.setAttribute('role', 'alert');
   toastEl.innerHTML = `
     <div class="d-flex">
       <div class="toast-body">${message}</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
     </div>`;
   toastContainer.appendChild(toastEl);
-  const toast = new bootstrap.Toast(toastEl,{delay:3000}); toast.show();
-  toastEl.addEventListener('hidden.bs.toast',()=>toastEl.remove());
+  const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+  toast.show();
+  toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
 }
 
-// Sign out
-signOutBtn.onclick = () => signOut(auth);
+signOutBtnEl.onclick = () => signOut(auth);
+createTestBtn.onclick = () => window.location.href = 'createTest.html';
 
-// Create test
-createTestBtn.onclick = () => window.location.href='createTest.html';
+// Delete modal
+window.deleteTest = function(testId, title) {
+  testToDeleteId = testId;
+  deleteTestTitleEl.textContent = title;
+  deleteModal.show();
+};
 
-// Render Your Tests
-function renderYourTests(){
-  yourTestsGrid.innerHTML='';
-  const yourTests = allTests.filter(t => t.ownerId===currentUser.uid);
+confirmDeleteBtn.addEventListener('click', async () => {
+  if (!testToDeleteId) return;
+  try {
+    await deleteDoc(doc(db, "tests", testToDeleteId));
+    showToast("Test deleted successfully!", "bg-success");
+    allTests = allTests.filter(t => t.id !== testToDeleteId);
+    testToDeleteId = null;
+    deleteModal.hide();
+    applyFilters();
+  } catch (error) {
+    console.error("Error deleting test:", error);
+    showToast("Failed to delete test.");
+  }
+});
+
+// Copy-link button
+function createCopyLinkButton(testId) {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
+  btn.innerHTML = `<i class="fas fa-link"></i>`;
+  btn.title = "Copy Test Link";
+  btn.onclick = () => {
+    // Automatically match your current folder (works locally or when deployed)
+    const basePath = window.location.pathname.replace(/\/[^\/]*$/, '');
+    const link = `${window.location.origin}${basePath}/doingTest.html?testId=${testId}`;
+
+    navigator.clipboard.writeText(link);
+    showToast("Link copied to clipboard!", "bg-success");
+  };
+  return btn;
+}
+
+
+// Render "Your Tests"
+function renderYourTests() {
+  yourTestsGrid.innerHTML = '';
+  let yourTests = allTests.filter(t => t.ownerId === currentUser.uid);
+  if (activeCategory !== "All") yourTests = yourTests.filter(t => t.category === activeCategory);
+
+  if (yourTests.length === 0) {
+    yourTestsGrid.innerHTML = `
+      <div class="card p-4 text-center shadow-sm" style="min-width:250px;">
+        <p class="text-muted mb-2"><i class="fas fa-info-circle me-1"></i>No tests found in "${activeCategory}"</p>
+        <button class="btn btn-success" onclick="window.location.href='createTest.html'">Create a Test</button>
+      </div>`;
+    return;
+  }
+
   yourTests.forEach(test => {
+    const cardWrapper = document.createElement('div');
+    cardWrapper.className = 'me-3 position-relative';
+    cardWrapper.style.minWidth = '250px';
+
     const card = document.createElement('div');
-    card.className='me-3';
-    card.style.minWidth='250px';
-    card.innerHTML=`
-      <div class="card h-100">
-        <div class="card-body">
-          <h5 class="card-title">${test.title}</h5>
-          <p class="card-subtitle text-muted mb-2">Created by: ${test.ownerEmail || "Unknown"}</p>
-          <button class="btn btn-primary me-2" onclick="window.location.href='doingTest.html?testId=${test.id}'"> <i class="fas fa-play"></i> Do Test</button>
-          <button class="btn btn-secondary" onclick="window.location.href='createTest.html?edit=${test.id}'"> <i class="fas fa-edit"></i> Edit Test</button>
-        </div>
-      </div>`;
-    yourTestsGrid.appendChild(card);
+    card.className = 'card h-100';
+    card.innerHTML = `
+      <div class="card-body">
+        <h5 class="card-title">${test.title}</h5>
+        <p class="card-subtitle text-muted mb-2">Category: ${test.category || 'Uncategorized'}</p>
+        <p class="card-subtitle text-muted mb-2">Type: ${test.type}</p>
+        <button class="btn btn-primary me-2" onclick="window.location.href='doingTest.html?testId=${test.id}'">
+          <i class="fas fa-play"></i> Do Test
+        </button>
+        <button class="btn btn-secondary me-2" onclick="window.location.href='createTest.html?edit=${test.id}'">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn btn-danger" onclick="deleteTest('${test.id}', '${test.title}')">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      </div>
+    `;
+    cardWrapper.appendChild(card);
+
+    if (test.type === 'link') {
+      const copyBtn = createCopyLinkButton(test.id);
+      cardWrapper.appendChild(copyBtn);
+    }
+
+    yourTestsGrid.appendChild(cardWrapper);
   });
 }
 
-// Render Other Tests (paginated)
-function renderOtherTestsPaginated(){
-  const nextChunk = otherTests.slice(otherTestsIndex, otherTestsIndex+chunkSize);
-  nextChunk.forEach(test=>{
-    const card = document.createElement('div');
-    card.className='col';
-    card.innerHTML=`
-      <div class="card h-100">
-        <div class="card-body">
-          <h5 class="card-title">${test.title}</h5>
-          <p class="card-subtitle text-muted mb-2">Created by: ${test.ownerEmail || "Unknown"}</p>
-          <button class="btn btn-primary me-2" onclick="window.location.href='doingTest.html?testId=${test.id}'"> <i class="fas fa-play"></i> Do Test</button>
-          ${
-            test.ownerId === currentUser.uid 
-            ? `<button class="btn btn-secondary" onclick="window.location.href='createTest.html?edit=${test.id}'"> <i class="fas fa-edit"></i> Edit Test</button>` 
-            : ''
-          }
-        </div>
+// Render "Other Tests" paginated
+function renderOtherTestsPaginated() {
+  if (otherTests.length === 0) {
+    otherTestsGrid.innerHTML = `
+      <div class="col-12 text-center p-4">
+        <p class="text-muted"><i class="fas fa-info-circle me-1"></i>There are no tests in here.</p>
       </div>`;
-    otherTestsGrid.appendChild(card);
+    loadMoreBtn.style.display = 'none';
+    return;
+  }
+
+  const nextChunk = otherTests.slice(otherTestsIndex, otherTestsIndex + chunkSize);
+  if (otherTestsIndex === 0) otherTestsGrid.innerHTML = '';
+
+  nextChunk.forEach(test => {
+    const col = document.createElement('div');
+    col.className = 'col position-relative';
+
+    const card = document.createElement('div');
+    card.className = 'card h-100';
+    card.innerHTML = `
+      <div class="card-body">
+        <h5 class="card-title">${test.title}</h5>
+        <p class="card-subtitle text-muted mb-2">Category: ${test.category || 'Uncategorized'}</p>
+        <p class="card-subtitle text-muted mb-2">By: ${test.ownerEmail || "Unknown"}</p>
+        <button class="btn btn-primary me-2" onclick="window.location.href='doingTest.html?testId=${test.id}'">
+          <i class="fas fa-play"></i> Do Test
+        </button>
+        ${test.ownerId === currentUser.uid ? `
+          <button class="btn btn-secondary me-2" onclick="window.location.href='createTest.html?edit=${test.id}'">
+            <i class="fas fa-edit"></i> Edit
+          </button>
+          <button class="btn btn-danger" onclick="deleteTest('${test.id}', '${test.title}')">
+            <i class="fas fa-trash"></i> Delete
+          </button>` : ''}
+      </div>
+    `;
+    col.appendChild(card);
+
+    if (test.type === 'link') {
+      const copyBtn = createCopyLinkButton(test.id);
+      col.appendChild(copyBtn);
+    }
+
+    otherTestsGrid.appendChild(col);
   });
+
   otherTestsIndex += chunkSize;
   loadMoreBtn.style.display = (otherTestsIndex >= otherTests.length) ? 'none' : 'block';
 }
 
 loadMoreBtn.addEventListener('click', renderOtherTestsPaginated);
 
-// Search
-searchInput.addEventListener('input', ()=>{
+// Filtering
+function applyFilters() {
   const term = searchInput.value.toLowerCase();
-  otherTestsGrid.innerHTML=''; otherTestsIndex=0;
-  otherTests = allTests.filter(t => t.ownerId!==currentUser.uid && t.title.toLowerCase().includes(term));
-  renderOtherTestsPaginated();
-  renderYourTests();
-});
+  const categoryFilter = (test) => activeCategory === "All" || test.category === activeCategory;
 
-// Load all tests
-async function loadTests(){
-  const snapshot = await getDocs(query(collection(db,"tests"), orderBy("createdAt","desc")));
-  allTests = [];
-  snapshot.forEach(doc => allTests.push({id:doc.id, ...doc.data()}));
   renderYourTests();
-  otherTests = allTests.filter(t => t.ownerId!==currentUser.uid);
+
   otherTestsIndex = 0;
+  otherTests = allTests.filter(t => 
+    t.ownerId !== currentUser.uid &&
+    t.type === 'public' &&
+    t.title.toLowerCase().includes(term) &&
+    categoryFilter(t)
+  );
+
   renderOtherTestsPaginated();
 }
 
-// Auth guard
-onAuthStateChanged(auth, user=>{
-  if(!user) window.location.href='signUp.html';
-  else{
+searchInput.addEventListener('input', applyFilters);
+
+categoryNav.querySelectorAll('.nav-category').forEach(link => {
+  link.addEventListener('click', () => {
+    categoryNav.querySelectorAll('.nav-category').forEach(el => el.classList.remove('active'));
+    link.classList.add('active');
+    activeCategory = link.dataset.category;
+    applyFilters();
+  });
+});
+
+// Load all tests
+async function loadTests() {
+  const snapshot = await getDocs(query(collection(db, "tests"), orderBy("createdAt", "desc")));
+  allTests = [];
+  snapshot.forEach(doc => allTests.push({ id: doc.id, ...doc.data() }));
+  otherTests = allTests.filter(t => t.ownerId !== currentUser.uid && t.type === 'public');
+  applyFilters();
+}
+
+// Auth
+onAuthStateChanged(auth, user => {
+  if (!user) window.location.href = 'signUp.html';
+  else {
     currentUser = user;
-    userNameEl.textContent = user.email;
+    userNameEl.textContent = user.displayName;
     loadTests();
   }
 });
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
+
