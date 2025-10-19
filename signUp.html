@@ -5,17 +5,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sign Up / Login</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body {
+  background: url('background.jpg') no-repeat center center fixed;
+  background-size: cover;
+  background-attachment: fixed;
+}
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.3);
+  z-index: -1;
+}
+.card { position: relative; z-index:1; width: 440px; padding:2rem; }
+#formTitle { font-size: 1.8rem; }
+.form-control { font-size: 1.1rem; height: 2.8rem; }
+</style>
 </head>
-<body class="bg-light">
+<body>
 
 <div class="container d-flex justify-content-center align-items-center vh-100">
-  <div class="card p-4 shadow" style="width: 350px;">
+  <div class="card p-5 shadow">
     <h3 class="mb-3 text-center" id="formTitle">Sign Up</h3>
 
-    <input type="email" id="emailInput" class="form-control mb-2" placeholder="Email">
-    <input type="password" id="passwordInput" class="form-control mb-2" placeholder="Password">
+    <div id="signUpFields">
+      <div class="row gx-2">
+        <div class="col-md-6"><input type="text" id="firstNameInput" class="form-control mb-2" placeholder="First Name"></div>
+        <div class="col-md-6"><input type="text" id="lastNameInput" class="form-control mb-2" placeholder="Last Name"></div>
+      </div>
+      <input type="text" id="usernameInput" class="form-control mb-2" placeholder="Username">
+      <input type="date" id="birthdayInput" class="form-control mb-2" placeholder="Birthday">
+      <div class="d-flex align-items-center mb-2" style="height:2.8rem;">
+        <label class="me-3 fw-bold text-muted">Gender:</label>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="gender" id="genderMale" value="male">
+          <label class="form-check-label" for="genderMale">Male</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="gender" id="genderFemale" value="female">
+          <label class="form-check-label" for="genderFemale">Female</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="gender" id="genderOther" value="other">
+          <label class="form-check-label" for="genderOther">Other</label>
+        </div>
+      </div>
+    </div>
 
+    <input type="text" id="emailInput" class="form-control mb-2" placeholder="Email">
+    <input type="password" id="passwordInput" class="form-control mb-2" placeholder="Password">
     <button id="submitBtn" class="btn btn-primary w-100 mb-2">Sign Up</button>
+
+    <div class="d-flex align-items-center my-3">
+      <hr class="flex-grow-1"><span class="mx-2 text-muted">or</span><hr class="flex-grow-1">
+    </div>
+
+    <button id="googleBtn" class="btn btn-danger w-100 mb-3">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" class="me-2">
+      Continue with Google
+    </button>
+
     <p class="text-center">
       <span id="toggleText">Already have an account?</span>
       <a href="#" id="toggleLink">Login</a>
@@ -23,14 +74,18 @@
   </div>
 </div>
 
-<!-- Toast container -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:11">
   <div id="toastContainer"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+import { 
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile, onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+import { 
+  getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs 
+} from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -45,76 +100,177 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
 
-// DOM Elements
+// DOM elements
 const formTitle = document.getElementById('formTitle');
 const emailInput = document.getElementById('emailInput');
 const passwordInput = document.getElementById('passwordInput');
 const submitBtn = document.getElementById('submitBtn');
 const toggleLink = document.getElementById('toggleLink');
 const toggleText = document.getElementById('toggleText');
+const signUpFields = document.getElementById('signUpFields');
+const googleBtn = document.getElementById('googleBtn');
+const firstNameInput = document.getElementById('firstNameInput');
+const lastNameInput = document.getElementById('lastNameInput');
+const usernameInput = document.getElementById('usernameInput');
+const birthdayInput = document.getElementById('birthdayInput');
 
 // Toast helper
-function showToast(message, type = 'bg-danger') {
-    const container = document.getElementById('toastContainer');
-    const toastId = `toast-${Date.now()}`;
-    const toastEl = document.createElement('div');
-    toastEl.className = `toast align-items-center text-white ${type} border-0`;
-    toastEl.id = toastId;
-    toastEl.setAttribute('role', 'alert');
-    toastEl.setAttribute('aria-live', 'assertive');
-    toastEl.setAttribute('aria-atomic', 'true');
-    toastEl.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">${message}</div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>`;
-    container.appendChild(toastEl);
-    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-    toast.show();
-    toastEl.addEventListener('hidden.bs.toast', () => { toastEl.remove(); });
+function showToast(message, type='bg-danger') {
+  const container = document.getElementById('toastContainer');
+  const toastEl = document.createElement('div');
+  toastEl.className = `toast align-items-center text-white ${type} border-0`;
+  toastEl.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+  container.appendChild(toastEl);
+  const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+  toast.show();
+  toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
 }
 
-// Toggle Sign Up / Login
+// Toggle UI
 let isSignUp = true;
-toggleLink.onclick = (e) => {
-    e.preventDefault();
-    isSignUp = !isSignUp;
-    formTitle.textContent = isSignUp ? 'Sign Up' : 'Login';
-    submitBtn.textContent = isSignUp ? 'Sign Up' : 'Login';
-    toggleText.textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
-    toggleLink.textContent = isSignUp ? 'Login' : 'Sign Up';
-};
+function updateUI() {
+  formTitle.textContent = isSignUp ? 'Sign Up' : 'Login';
+  submitBtn.textContent = isSignUp ? 'Sign Up' : 'Login';
+  toggleText.textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
+  toggleLink.textContent = isSignUp ? 'Login' : 'Sign Up';
+  emailInput.placeholder = isSignUp ? 'Email' : 'Email or Username';
+  signUpFields.style.display = isSignUp ? 'block' : 'none';
+}
+toggleLink.onclick = (e)=>{ e.preventDefault(); isSignUp = !isSignUp; updateUI(); };
+updateUI();
 
-// Submit handler
+// Helper: Validate email
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// SIGNUP / LOGIN HANDLER
 submitBtn.onclick = async () => {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value.trim();
+  const credential = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+  submitBtn.disabled = true;
 
-    if (!email || !password) {
-        showToast('Please enter both email and password', 'bg-danger');
-        return;
+  try {
+    if (isSignUp) {
+      // Collect signup fields
+      const firstName = firstNameInput.value.trim();
+      const lastName = lastNameInput.value.trim();
+      const username = usernameInput.value.trim();
+      const birthday = birthdayInput.value;
+      const gender = document.querySelector('input[name="gender"]:checked')?.value;
+
+      if (!firstName || !lastName || !username || !birthday || !gender) {
+        showToast('Please fill all fields'); submitBtn.disabled = false; return;
+      }
+
+      if (!emailPattern.test(credential)) {
+        showToast('Use a valid email'); submitBtn.disabled = false; return;
+      }
+
+      // ✅ Check username in separate usernames collection
+      const usernameRef = doc(db, "usernames", username);
+      const usernameSnap = await getDoc(usernameRef);
+      if (usernameSnap.exists()) {
+        showToast('Username taken', 'bg-warning'); submitBtn.disabled = false; return;
+      }
+
+      // Create Firebase Auth account
+      const userCredential = await createUserWithEmailAndPassword(auth, credential, password);
+      const user = userCredential.user;
+
+      await auth.currentUser.getIdToken(true);
+      await auth.currentUser.reload();
+
+      // Update display name
+      await updateProfile(user, { displayName: username });
+
+      // Save user profile in users collection
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email,
+        firstName,
+        lastName,
+        username,
+        birthday,
+        gender,
+        createdAt: new Date().toISOString()
+      });
+
+      // Save username in usernames collection
+      await setDoc(usernameRef, { uid: user.uid });
+
+      showToast('Sign up successful! Redirecting...', 'bg-success');
+
+    } else {
+      // LOGIN: support email or username
+      let loginEmail = credential;
+      if (!emailPattern.test(credential)) {
+        // Lookup email by username
+        const q = query(collection(db, "users"), where("username", "==", credential));
+        const snap = await getDocs(q);
+        if (snap.empty) { showToast('No account with that username'); submitBtn.disabled = false; return; }
+        loginEmail = snap.docs[0].data().email;
+      }
+      await signInWithEmailAndPassword(auth, loginEmail, password);
+      showToast('Login successful! Redirecting...', 'bg-success');
     }
 
-    try {
-        if (isSignUp) {
-            await createUserWithEmailAndPassword(auth, email, password);
-            showToast('Sign up successful!', 'bg-success');
-        } else {
-            await signInWithEmailAndPassword(auth, email, password);
-            showToast('Login successful!', 'bg-success');
-        }
-    } catch (err) {
-        console.error(err);
-        showToast(err.message, 'bg-danger');
-    }
+  } catch (err) {
+    console.error(err);
+    const friendly = {
+      'auth/email-already-in-use':'Email already registered',
+      'auth/wrong-password':'Incorrect password',
+      'auth/user-not-found':'No account with this email',
+      'auth/weak-password':'Password must be at least 6 characters'
+    };
+    showToast(friendly[err.code] || `Authentication failed: ${err.message}`, 'bg-danger');
+  } finally {
+    submitBtn.disabled = false;
+  }
 };
 
-// Redirect if already logged in
+// GOOGLE SIGN-IN
+googleBtn.onclick = async () => {
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+
+    await auth.currentUser.getIdToken(true);
+    await auth.currentUser.reload();
+
+    // Determine username
+    const username = user.displayName?.replace(/\s+/g,'_') || user.email.split('@')[0];
+
+    // Save user profile in users collection
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      email: user.email,
+      username,
+      createdAt: new Date().toISOString()
+    }, { merge: true });
+
+    // Save username in usernames collection if not exists
+    const usernameRef = doc(db, "usernames", username);
+    const usernameSnap = await getDoc(usernameRef);
+    if (!usernameSnap.exists()) {
+      await setDoc(usernameRef, { uid: user.uid });
+    }
+
+    showToast('Signed in with Google! Redirecting...', 'bg-success');
+
+  } catch (err) {
+    console.error(err);
+    showToast('Google sign-in failed: '+err.message, 'bg-danger');
+  }
+};
+
+// REDIRECT AFTER LOGIN
 onAuthStateChanged(auth, (user) => {
-    if (user) window.location.href = 'dashboard.html';
+  if(user) setTimeout(()=>window.location.href='dashboard.html', 1000);
 });
 </script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
