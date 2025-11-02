@@ -45,7 +45,7 @@ body { font-family: 'Inter', sans-serif; }
 </nav>
 
 <!-- Category Bar -->
-<div id="categoryBar" class="bg-gray-800 border-t border-gray-700 shadow-inner sticky top-[68px] z-5">
+<div id="categoryBar" class="bg-gray-800 border-t border-gray-700 shadow-inner">
 <div class="container mx-auto px-4">
     <div class="flex overflow-x-auto space-x-2 py-3 whitespace-nowrap scroll-smooth" id="categoryNav">
         <a class="nav-category active text-sm" data-category="All">All</a>
@@ -199,20 +199,20 @@ function createTestCard(test,isYourTest=false){
 
     // Buttons
     const doBtn=document.createElement('button');
-    doBtn.className='bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition duration-200';
+    doBtn.className='bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-1.5 px-3 rounded-md text-xs transition duration-200';
     doBtn.innerHTML='<i class="fas fa-play"></i> Do Test';
     doBtn.addEventListener('click',()=>window.location.href=`doingTest.html?testId=${test.id}`);
     btnContainer.appendChild(doBtn);
 
     if(isYourTest || (currentUser && test.ownerId===currentUser.uid)){
         const editBtn=document.createElement('button');
-        editBtn.className='bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition duration-200';
+        editBtn.className='bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-3 rounded-md text-xs transition duration-200';
         editBtn.innerHTML='<i class="fas fa-edit"></i> Edit';
         editBtn.addEventListener('click',()=>window.location.href=`createTest.html?edit=${test.id}`);
         btnContainer.appendChild(editBtn);
 
         const deleteBtn=document.createElement('button');
-        deleteBtn.className='bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition duration-200';
+        deleteBtn.className='bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 px-3 rounded-md text-xs transition duration-200';
         deleteBtn.innerHTML='<i class="fas fa-trash"></i> Delete';
         deleteBtn.addEventListener('click',(e)=>{ e.stopPropagation(); deleteTest(test.id,test.title); });
         btnContainer.appendChild(deleteBtn);
